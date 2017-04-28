@@ -1,3 +1,4 @@
+import os
 import sys
 import socket
 import getopt
@@ -12,8 +13,6 @@ execute = ""
 target = ""
 upload_destination = ""
 port = 0
-
-# Main function responsible for handling CLI args and calling other functions
 
 def usage():
     print "My Net Tools"
@@ -32,7 +31,11 @@ def usage():
     print "mynettools.py -t 192.168.0.1 -p 5555 -l -e=\"cat /etc/passwd\""
     print "echo 'ABCDEFGHI' | ./mynettools.py -t 192.168.0.2 -p 135"
     sys.exit(0)
-    
+
+
+
+
+# Main function responsible for handling CLI args and calling other functions
 def main():
     global listen
     global port
@@ -88,9 +91,6 @@ def main():
     
     if listen:
         server_loop()
-        
-        
-main()
 
 def client_sender(buffer):
     
@@ -105,7 +105,7 @@ def client_sender(buffer):
             
         while True:
             
-            # wait to receive data back
+            # wait to receive data back	
             recv_len = 1
             response = ""
             
@@ -113,12 +113,11 @@ def client_sender(buffer):
                 
                 data = client.recv(4096)
                 recv_len = len(data)
-                response+= data
+                response += data
                 
                 if recv_len < 4096:
-                    break
+					break
                 
-                print repsonse, 
                 
                 #wait for more input
                 buffer = raw_input("")
@@ -126,15 +125,116 @@ def client_sender(buffer):
                 
                 # send buffer
                 client.send(buffer)
-                
-                
+	
     except:
-        
-        print "[*] Exception! Exiting."
-        
+		print "[*] Exception! Exiting."
         # remove connection
-        client.close()
+		client.close()
         
 def server_loop():
-    global target
-    
+	global target
+	# if no target is defined, we listen on all interfaces
+	if not len(target):
+		target = "0.0.0.0"
+
+	server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+	server.bind((target,port))
+	
+	server.listen(5)
+
+	while True:
+		client_socket, addr = server.accept()
+		# spin off a thread to handle our new client
+
+		client_thread = threading.Thread(target=client_handler, args=(client_socket,))
+
+		client_thread.start()
+
+def run_command(command):
+
+	# trim the newline
+	command = command.rstrip()
+	# run the command and get the output back
+	try:
+		output = subprocess.check_output(command,stderr=subprocess. STDOUT, shell=True)
+	
+	except:
+		output = "Failed to execute command.\r\n"
+	
+	# send the output back to the client
+	
+	return output     
+	
+
+def client_handler(client_socket):
+	global upload
+	global execute
+	global command
+	# check for upload
+	if len(upload_destination):
+		
+		#read in all of the bytes and write to our destination
+		file_buffer = ""
+
+		# keep reading data until none is available
+		while True:
+			data = client_socket.recv(1024)
+
+			if len(data) == 0:
+				break
+
+			else:
+
+				file_buffer += data
+
+				# now we take these bytes and try to write them out
+		try:
+
+			file_descriptor = open(upload_destination,"wb")
+
+			file_descriptor.write(file_buffer)
+
+			file_descriptor.close()
+
+			# acknowledge that we wrote the file out
+
+			client_socket.send("Successfully saved file to %s\r\n" % upload_destination)
+		
+		except:
+
+			client_socket.send("Failed to save file to %s\r\n" % upload_destination)
+
+	
+		# check for command execution
+
+	if len(execute):
+		
+		# run the command
+	
+		output = run_command(execute)
+		
+		client_socket.send(output)
+		
+		# now we go into another loop if a command shell was requested
+	
+	if command:
+		
+		prompt = "<BHP:#> "
+        client_socket.send(prompt)
+
+        while True:
+			cmd_buffer = ""
+            
+			while "\n" not in cmd_buffer:
+				
+				cmd_buffer += client_socket.recv(1024)
+
+            
+				response = run_command(cmd_buffer)
+				response += prompt
+
+				client_socket.send(response)
+
+main()
+
+
