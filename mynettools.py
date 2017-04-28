@@ -1,3 +1,4 @@
+import os
 import sys
 import socket
 import getopt
@@ -14,7 +15,136 @@ upload_destination = ""
 port = 0
 
 # Main function responsible for handling CLI args and calling other functions
+def client_sender(buffer):
+    
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    
+    try:
+        # connect to the target host
+        client.connect((target,port))
+        
+        if len(buffer):
+            client.send(buffer)
+            
+        while True:
+            
+            # wait to receive data back
+            recv_len = 1
+            response = ""
+            
+            while recv_len:
+                
+                data = client.recv(4096)
+                recv_len = len(data)
+                response+= data
+                
+                if recv_len < 4096:
+                    break
+                
+                print response, 
+                
+                #wait for more input
+                buffer = raw_input("")
+                buffer += "\n"
+                
+                # send buffer
+                client.send(buffer)
+                
+                
+    except:
+        
+        print "[*] Exception! Exiting."
+        
+        # remove connection
+        client.close()
+        
+def server_loop():
+    global target
+    
+    if not len(target):
+		target = "0.0.0.0"
+		
+	server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+	server.bing((target, port))
+	server.listen(5)
+	
+	while True:
+		client_socket, addr = server.accept()
+		
+		# Make a thread to handle the client
+		client_thread = threading.Thread(target = client_handler, args = (client_socket,))
+		client_thread.start()
+		
+def run_command(command):
+	
+	#trim the newline
+	command = command.rstrip()
+	
+	# run the command
+	try:
+		output = subprocess.check_output(command, stderr = subprocess.STDOUT, shell = True)
+	except:
+		output = "Failed to execute command. \r\n"
+		
+	return output
 
+def client_handler(client_socket):
+	global upload
+	global execute
+	global command
+	
+	# check for upload
+	if len(upload_destination):
+		
+		# reads in all the bytes and writes to our destination
+		file_buffer = ""
+		
+		# keep reading data until none
+		
+		while True:
+			data = client_socket.recv(1024)
+			
+			if not data:
+				break
+			else:
+				file_buffer += data
+			
+		# Take the bytes and write them out
+		try:
+			file_descriptor = open(upload_destination, "wb")
+			file_descriptor.write(file_buffer)
+			file_descriptor.close()
+			
+			# ACK that file was written
+			client_socket.send("Successfully saved the file to %s\r\n" % upload_destination)
+		except:
+			client_socket.send("Failed to save file to %s\r\n" % upload_destination)
+			
+	# check for command execution
+	if len(execute):
+		
+		# run the command
+		output = run_command(execute)
+		
+		client_socket.send(output)
+		
+	# go into a loop if a command shell was requested
+	if command:
+	
+		while True:
+			# display a basic prompt
+			client_socket.send(output)
+			
+			# end data receiving when we encounter a line feed (enter key)
+			cmd_buffer = ""
+			while "\n" not in cmd_buffer:
+				cmd_buffer += client_socket.recv(1024)
+				
+			# send back the command output
+			response = run_command(cmd_buffer)
+			
+			# send back the response
+			client_socket.send(response)
 def usage():
     print "My Net Tools"
     print
@@ -118,7 +248,7 @@ def client_sender(buffer):
                 if recv_len < 4096:
                     break
                 
-                print repsonse, 
+                print response, 
                 
                 #wait for more input
                 buffer = raw_input("")
