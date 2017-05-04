@@ -35,8 +35,6 @@ when the client connects, we receive the client socket and place it in the clien
 #MY_NET_TOOLS
 -------------
 
-network client and server to push data 
-
-listener to get cli access
+This is my attempt at making Netcat from scratch. 
 
 
